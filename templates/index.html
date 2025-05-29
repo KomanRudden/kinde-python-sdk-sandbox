@@ -1,0 +1,303 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="hero">
+    {% if not is_authenticated %}
+    <div class="auth-buttons">
+        <h2>Welcome to Kinde Python SDK Demo</h2>
+        <p>Please login or register to continue</p>
+        <div class="button-group">
+            <a href="{{ url_for('app_login') }}" class="auth-btn login-btn">Login</a>
+            <a href="{{ url_for('app_register') }}" class="auth-btn register-btn">Register</a>
+        </div>
+    </div>
+    {% endif %}
+
+    <div class="display-section" id="tokens-section">
+        <h2>Access Tokens</h2>
+        <div class="section-note">
+            <p>The JWT payload shows permissions and feature flags as they were when the token was issued. Use the refresh button to get a new token with current values.</p>
+        </div>
+        <div id="tokens-content"></div>
+        <div class="token-actions">
+            <button class="refresh-btn" onclick="refreshToken()">Refresh Token</button>
+        </div>
+    </div>
+
+    <div class="display-section" id="feature-flags-section">
+        <h2>Feature Flags</h2>
+        <div class="section-note">
+            <p>Current feature flags from Kinde (may differ from JWT values).</p>
+        </div>
+        <div class="input-group">
+            <input type="text" id="flagCode" placeholder="Enter flag code" class="input-field">
+            <button onclick="getFeatureFlag()" class="action-btn">Get Flag</button>
+            <button onclick="loadFeatureFlags()" class="action-btn">Show All Flags</button>
+        </div>
+        <div id="feature-flags-content"></div>
+    </div>
+
+    <div class="display-section" id="permissions-section">
+        <h2>Permissions</h2>
+        <div class="section-note">
+            <p>Current permissions from Kinde (may differ from JWT values).</p>
+        </div>
+        <div class="input-group">
+            <input type="text" id="permissionKey" placeholder="Enter permission key" class="input-field">
+            <button onclick="getPermission()" class="action-btn">Get Permission</button>
+            <button onclick="loadPermissions()" class="action-btn">Show All Permissions</button>
+        </div>
+        <div id="permissions-content"></div>
+    </div>
+
+    <!-- Modal -->
+    <div id="tokenModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title">Access Token Payload</h2>
+                <button class="close-btn" onclick="closeModal()">&times;</button>
+            </div>
+            <div class="token-display">
+                <pre id="jwtPayload" class="jwt-content"></pre>
+                <div class="jwt-actions">
+                    <button class="copy-btn" onclick="copyToken()">Copy Token</button>
+                    <button class="copy-btn" onclick="copyPayload()">Copy Payload</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Modal functions
+        function showModal() {
+            document.getElementById('tokenModal').style.display = 'block';
+        }
+
+        function closeModal() {
+            document.getElementById('tokenModal').style.display = 'none';
+        }
+
+        // JWT functions
+        function decodeJWT(token) {
+            try {
+                const parts = token.split('.');
+                if (parts.length !== 3) {
+                    return { error: 'Invalid JWT format' };
+                }
+                const header = JSON.parse(atob(parts[0]));
+                const payload = JSON.parse(atob(parts[1]));
+                return {
+                    header,
+                    payload,
+                    signature: parts[2]
+                };
+            } catch (error) {
+                return { error: 'Failed to decode JWT: ' + error.message };
+            }
+        }
+
+        function showTokenModal(token) {
+            const decoded = decodeJWT(token);
+            if (decoded.error) {
+                document.getElementById('jwtPayload').textContent = decoded.error;
+            } else {
+                const { payload } = decoded;
+                document.getElementById('jwtPayload').textContent = 
+                    JSON.stringify(payload, null, 2);
+            }
+            showModal();
+        }
+
+        // Copy functions
+        function copyToken() {
+            const token = document.querySelector('.token-preview-btn').getAttribute('data-token');
+            navigator.clipboard.writeText(token).then(() => {
+                showCopyFeedback('Copy Token');
+            });
+        }
+
+        function copyPayload() {
+            const payload = document.getElementById('jwtPayload').textContent;
+            navigator.clipboard.writeText(payload).then(() => {
+                showCopyFeedback('Copy Payload');
+            });
+        }
+
+        function showCopyFeedback(buttonText) {
+            const copyBtn = document.querySelector(`button[onclick="${buttonText}()"]`);
+            const originalText = copyBtn.textContent;
+            copyBtn.textContent = 'Copied!';
+            setTimeout(() => {
+                copyBtn.textContent = originalText;
+            }, 2000);
+        }
+
+        // Data loading functions
+        async function loadTokens() {
+            try {
+                const response = await fetch('/app_get_tokens');
+                if (response.ok) {
+                    const data = await response.json();
+                    const formattedData = JSON.stringify(data, null, 2);
+                    const tokenPreview = formattedData.replace(/"([^"]{40,})"/g, (match, token) => {
+                        const previewLength = 20;
+                        const preview = '...' + token.slice(-previewLength);
+                        if (token === data.access_token) {
+                            return `"${preview}" <button class="token-preview-btn" onclick="showTokenModal('${token}')" data-token="${token}">View Full Token</button>`;
+                        }
+                        return `"${preview}"`;
+                    });
+                    document.getElementById('tokens-content').innerHTML = 
+                        `<pre><code>${tokenPreview}</code></pre>`;
+                    document.getElementById('tokens-section').style.display = 'block';
+                }
+            } catch (error) {
+                console.error('Error loading tokens:', error);
+                document.getElementById('tokens-content').innerHTML = 
+                    `<div class="error-message">Error loading tokens: ${error.message}</div>`;
+            }
+        }
+
+        async function loadFeatureFlags() {
+            try {
+                const response = await fetch('/app_get_feature_flags');
+                if (response.ok) {
+                    const data = await response.json();
+                    if (Object.keys(data).length === 0) {
+                        document.getElementById('feature-flags-content').innerHTML = 
+                            `<div class="section-note">
+                                <p>No feature flags found. This could be because:</p>
+                                <ul>
+                                    <li>No feature flags have been configured in your Kinde account</li>
+                                    <li>No feature flags are assigned to your user or organization</li>
+                                    <li>You need to create feature flags in the Kinde dashboard</li>
+                                </ul>
+                            </div>`;
+                    } else {
+                        const formattedData = JSON.stringify(data, null, 2);
+                        document.getElementById('feature-flags-content').innerHTML = 
+                            `<pre><code>${formattedData}</code></pre>`;
+                    }
+                    document.getElementById('feature-flags-section').style.display = 'block';
+                } else {
+                    const error = await response.json();
+                    document.getElementById('feature-flags-content').innerHTML = 
+                        `<div class="error-message">Error: ${error.error}</div>`;
+                }
+            } catch (error) {
+                console.error('Error loading feature flags:', error);
+                document.getElementById('feature-flags-content').innerHTML = 
+                    `<div class="error-message">Error loading feature flags: ${error.message}</div>`;
+            }
+        }
+
+        async function loadPermissions() {
+            try {
+                const response = await fetch('/app_get_permissions');
+                if (response.ok) {
+                    const data = await response.json();
+                    const formattedData = JSON.stringify(data, null, 2);
+                    document.getElementById('permissions-content').innerHTML = 
+                        `<pre><code>${formattedData}</code></pre>`;
+                    document.getElementById('permissions-section').style.display = 'block';
+                }
+            } catch (error) {
+                console.error('Error loading permissions:', error);
+                document.getElementById('permissions-content').innerHTML = 
+                    `<div class="error-message">Error loading permissions: ${error.message}</div>`;
+            }
+        }
+
+        async function refreshToken() {
+            try {
+                const response = await fetch('/app_refresh_token');
+                const data = await response.json();
+                
+                if (response.ok && data.success) {
+                    // Token refreshed successfully, reload the data
+                    await loadTokens();
+                    await loadFeatureFlags();
+                    await loadPermissions();
+                    showCopyFeedback('Token refreshed successfully');
+                } else if (data.login_url) {
+                    // Need to re-authenticate, redirect to login
+                    window.location.href = data.login_url;
+                } else {
+                    console.error('Error refreshing token:', data.error);
+                    showCopyFeedback('Failed to refresh token');
+                }
+            } catch (error) {
+                console.error('Error refreshing token:', error);
+                showCopyFeedback('Failed to refresh token');
+            }
+        }
+
+        async function getFeatureFlag() {
+            const flagCode = document.getElementById('flagCode').value.trim();
+            if (!flagCode) {
+                alert('Please enter a flag code');
+                return;
+            }
+
+            try {
+                const response = await fetch(`/app_get_feature_flags?flag_code=${encodeURIComponent(flagCode)}`);
+                if (response.ok) {
+                    const data = await response.json();
+                    const formattedData = JSON.stringify(data, null, 2);
+                    document.getElementById('feature-flags-content').innerHTML = 
+                        `<pre><code>${formattedData}</code></pre>`;
+                    document.getElementById('feature-flags-section').style.display = 'block';
+                } else {
+                    const error = await response.json();
+                    document.getElementById('feature-flags-content').innerHTML = 
+                        `<div class="error-message">Error: ${error.error}</div>`;
+                }
+            } catch (error) {
+                console.error('Error getting feature flag:', error);
+                document.getElementById('feature-flags-content').innerHTML = 
+                    `<div class="error-message">Error getting feature flag: ${error.message}</div>`;
+            }
+        }
+
+        async function getPermission() {
+            const permissionKey = document.getElementById('permissionKey').value.trim();
+            if (!permissionKey) {
+                alert('Please enter a permission key');
+                return;
+            }
+
+            try {
+                const response = await fetch(`/app_get_permissions?permission_key=${encodeURIComponent(permissionKey)}`);
+                if (response.ok) {
+                    const data = await response.json();
+                    const formattedData = JSON.stringify(data, null, 2);
+                    document.getElementById('permissions-content').innerHTML = 
+                        `<pre><code>${formattedData}</code></pre>`;
+                    document.getElementById('permissions-section').style.display = 'block';
+                } else {
+                    const error = await response.json();
+                    document.getElementById('permissions-content').innerHTML = 
+                        `<div class="error-message">Error: ${error.error}</div>`;
+                }
+            } catch (error) {
+                console.error('Error getting permission:', error);
+                document.getElementById('permissions-content').innerHTML = 
+                    `<div class="error-message">Error getting permission: ${error.message}</div>`;
+            }
+        }
+
+        // Initialize on page load
+        document.addEventListener('DOMContentLoaded', () => {
+            if ({{ is_authenticated|tojson }}) {
+                document.getElementById('feature-flags-section').style.display = 'block';
+                document.getElementById('permissions-section').style.display = 'block';
+                Promise.all([
+                    loadTokens(),
+                    loadFeatureFlags(),
+                    loadPermissions()
+                ]);
+            }
+        });
+    </script>
+</div>
+{% endblock %}

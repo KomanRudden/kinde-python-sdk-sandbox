@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="card">
+    <h2>User Dashboard</h2>
+    <h3>User Information</h3>
+    <div class="user-info">
+        <img src="{{ user_info.picture }}" alt="User Avatar">
+        <div>
+            <p><strong>Name:</strong> {{ user_info.name }}</p>
+            <p><strong>Email:</strong> {{ user_info.email }}</p>
+            <p><strong>Email Verified:</strong> {{ "Yes" if user_info.email_verified else "No" }}</p>
+        </div>
+    </div>
+
+    <h3>User Claims</h3>
+    <div class="claims">
+        {% for key, value in claims.items() %}
+            <div class="claim-item">
+                <strong>{{ key }}:</strong> {{ value }}
+            </div>
+        {% endfor %}
+    </div>
+</div>
+{% endblock %}
