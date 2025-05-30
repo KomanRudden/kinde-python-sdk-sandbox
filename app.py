@@ -130,7 +130,7 @@ def app_get_feature_flags():
         if flag_code:
             # Get specific flag
             flag = asyncio.run(kinde_feature_flags.get_flag(flag_code))
-            logger.info(f"Feature flag {flag_code} retrieved for user {user_id}: {flag}")
+            logger.info(f"Feature flag {flag_code} retrieved: {flag.code} {flag.value}")
             return jsonify({
                 "code": flag_code,
                 "type": flag.type,
@@ -166,12 +166,26 @@ def app_get_claims():
     claim_name = request.args.get("claim_name")
     try:
         kinde_claims = Claims()
+        token_manager = kinde_oauth._session_manager.get_token_manager(user_id)
+        logger.info(f"Token manager status: {'Available' if token_manager else 'Not available'}")
+        
+        if not token_manager:
+            logger.warning("No token manager available - user may not be authenticated")
+            return jsonify({"error": "No valid session found"}), 401
+
+        claims = token_manager.get_claims()
+        logger.info(f"Claims retrieved: {claims}")
+        
         if claim_name:
-            claim = asyncio.run(kinde_claims.get_claim(claim_name))
-            logger.info(f"Claim {claim_name} retrieved for user {user_id}: {claim}")
-            return jsonify(claim)
+            # Get specific claim
+            value = claims.get(claim_name)
+            logger.info(f"Claim {claim_name} retrieved for user {user_id}: {value}")
+            return jsonify({
+                "name": claim_name,
+                "value": value
+            })
         else:
-            claims = asyncio.run(kinde_claims.get_all_claims())
+            # Get all claims
             logger.info(f"All claims retrieved for user {user_id}: {claims}")
             return jsonify(claims)
     except Exception as e:
@@ -254,10 +268,13 @@ def app_refresh_token():
         return jsonify({"error": "User not authenticated"}), 401
 
     try:
+        logger.info(f"Getting tokens for user {user_id}")
         tokens = kinde_oauth.get_tokens(user_id)
+        logger.info(f"Tokens retrieved for user {user_id}: {tokens}")
         if not tokens or "refresh_token" not in tokens:
             # If no refresh token, fall back to full re-authentication
             session.clear()
+            logger.warn("Full re-authentication required")
             login_url = asyncio.run(kinde_oauth.login())
             return jsonify({"login_url": login_url})
 
@@ -265,11 +282,13 @@ def app_refresh_token():
         new_tokens = asyncio.run(kinde_oauth.refresh_token(tokens["refresh_token"]))
         if new_tokens:
             # Update session with new tokens
+            logger.info("Updating tokens")
             kinde_oauth.update_tokens(user_id, new_tokens)
             return jsonify({"success": True, "message": "Token refreshed successfully"})
         else:
             # If refresh fails, fall back to full re-authentication
             session.clear()
+            logger.warn("Falling back to full re-authentication")
             login_url = asyncio.run(kinde_oauth.login())
             return jsonify({"login_url": login_url})
 

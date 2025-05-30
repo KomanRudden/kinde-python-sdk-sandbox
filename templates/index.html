@@ -50,6 +50,19 @@
         <div id="permissions-content"></div>
     </div>
 
+    <div class="display-section" id="claims-section">
+        <h2>Claims</h2>
+        <div class="section-note">
+            <p>Current claims from the access token.</p>
+        </div>
+        <div class="input-group">
+            <input type="text" id="claimName" placeholder="Enter claim name (e.g., email, name)" class="input-field">
+            <button onclick="getClaim()" class="action-btn">Get Claim</button>
+            <button onclick="loadClaims()" class="action-btn">Show All Claims</button>
+        </div>
+        <div id="claims-content"></div>
+    </div>
+
     <!-- Modal -->
     <div id="tokenModal" class="modal">
         <div class="modal-content">
@@ -208,30 +221,6 @@
             }
         }
 
-        async function refreshToken() {
-            try {
-                const response = await fetch('/app_refresh_token');
-                const data = await response.json();
-                
-                if (response.ok && data.success) {
-                    // Token refreshed successfully, reload the data
-                    await loadTokens();
-                    await loadFeatureFlags();
-                    await loadPermissions();
-                    showCopyFeedback('Token refreshed successfully');
-                } else if (data.login_url) {
-                    // Need to re-authenticate, redirect to login
-                    window.location.href = data.login_url;
-                } else {
-                    console.error('Error refreshing token:', data.error);
-                    showCopyFeedback('Failed to refresh token');
-                }
-            } catch (error) {
-                console.error('Error refreshing token:', error);
-                showCopyFeedback('Failed to refresh token');
-            }
-        }
-
         async function getFeatureFlag() {
             const flagCode = document.getElementById('flagCode').value.trim();
             if (!flagCode) {
@@ -286,15 +275,102 @@
             }
         }
 
+        async function getClaim() {
+            const claimName = document.getElementById('claimName').value.trim();
+            if (!claimName) {
+                alert('Please enter a claim name');
+                return;
+            }
+
+            try {
+                const response = await fetch(`/app_get_claims?claim_name=${encodeURIComponent(claimName)}`);
+                if (response.ok) {
+                    const data = await response.json();
+                    const formattedData = JSON.stringify(data, null, 2);
+                    document.getElementById('claims-content').innerHTML = 
+                        `<pre><code>${formattedData}</code></pre>`;
+                    document.getElementById('claims-section').style.display = 'block';
+                } else {
+                    const error = await response.json();
+                    document.getElementById('claims-content').innerHTML = 
+                        `<div class="error-message">Error: ${error.error}</div>`;
+                }
+            } catch (error) {
+                console.error('Error getting claim:', error);
+                document.getElementById('claims-content').innerHTML = 
+                    `<div class="error-message">Error getting claim: ${error.message}</div>`;
+            }
+        }
+
+        async function loadClaims() {
+            try {
+                const response = await fetch('/app_get_claims');
+                if (response.ok) {
+                    const data = await response.json();
+                    if (Object.keys(data).length === 0) {
+                        document.getElementById('claims-content').innerHTML = 
+                            `<div class="section-note">
+                                <p>No claims found. This could be because:</p>
+                                <ul>
+                                    <li>You are not properly authenticated</li>
+                                    <li>Your access token has expired</li>
+                                    <li>Try refreshing your token</li>
+                                </ul>
+                            </div>`;
+                    } else {
+                        const formattedData = JSON.stringify(data, null, 2);
+                        document.getElementById('claims-content').innerHTML = 
+                            `<pre><code>${formattedData}</code></pre>`;
+                    }
+                    document.getElementById('claims-section').style.display = 'block';
+                } else {
+                    const error = await response.json();
+                    document.getElementById('claims-content').innerHTML = 
+                        `<div class="error-message">Error: ${error.error}</div>`;
+                }
+            } catch (error) {
+                console.error('Error loading claims:', error);
+                document.getElementById('claims-content').innerHTML = 
+                    `<div class="error-message">Error loading claims: ${error.message}</div>`;
+            }
+        }
+
+        async function refreshToken() {
+            try {
+                const response = await fetch('/app_refresh_token');
+                const data = await response.json();
+                
+                if (response.ok && data.success) {
+                    // Token refreshed successfully, reload the data
+                    await loadTokens();
+                    await loadFeatureFlags();
+                    await loadPermissions();
+                    await loadClaims();
+                    showCopyFeedback('Token refreshed successfully');
+                } else if (data.login_url) {
+                    // Need to re-authenticate, redirect to login
+                    window.location.href = data.login_url;
+                } else {
+                    console.error('Error refreshing token:', data.error);
+                    showCopyFeedback('Failed to refresh token');
+                }
+            } catch (error) {
+                console.error('Error refreshing token:', error);
+                showCopyFeedback('Failed to refresh token');
+            }
+        }
+
         // Initialize on page load
         document.addEventListener('DOMContentLoaded', () => {
             if ({{ is_authenticated|tojson }}) {
                 document.getElementById('feature-flags-section').style.display = 'block';
                 document.getElementById('permissions-section').style.display = 'block';
+                document.getElementById('claims-section').style.display = 'block';
                 Promise.all([
                     loadTokens(),
                     loadFeatureFlags(),
-                    loadPermissions()
+                    loadPermissions(),
+                    loadClaims()
                 ]);
             }
         });
