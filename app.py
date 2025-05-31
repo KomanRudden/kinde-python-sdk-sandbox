@@ -23,6 +23,12 @@ load_dotenv()
 app = Flask(__name__)
 app.secret_key = os.getenv('FLASK_SECRET_KEY')
 
+# Configure session settings
+app.config['SESSION_COOKIE_SIZE_LIMIT'] = 4093  # Set to browser limit
+app.config['SESSION_COOKIE_SECURE'] = False  # Set to True in production with HTTPS
+app.config['SESSION_COOKIE_HTTPONLY'] = True
+app.config['PERMANENT_SESSION_LIFETIME'] = 3600  # 1 hour
+
 # Initialize Kinde OAuth client with Flask framework
 kinde_oauth = OAuth(
     client_id=os.getenv("KINDE_CLIENT_ID"),
@@ -229,13 +235,17 @@ async def app_callback():
     user_id = session.get("user_id")
     if not user_id:
         user_id = str(uuid.uuid4())
-        session["user_id"] = user_id
-        logger.info(f"Generated new user_id: {user_id}")
-
+    
     try:
+        # Clear any existing session data
+        session.clear()
+        # Store only the user_id in session
+        session["user_id"] = user_id
+        
         # Handle the OAuth redirect and exchange code for tokens
         result = await kinde_oauth.handle_redirect(code, user_id, state)
         logger.info(f"Redirect handled successfully: {result}")
+        
         return redirect(url_for("index"))
     except Exception as e:
         logger.error(f"Callback failed: {str(e)}")
@@ -246,13 +256,15 @@ async def app_logout():
     user_id = session.get("user_id")
     if user_id:
         try:
+            # Clear session before logout
+            session.clear()
+            
             # Explicitly set the post_logout_redirect_uri to match the allowed URL
             post_logout_redirect_uri = "http://localhost:5000"
             logout_url = await kinde_oauth.logout(
                 user_id=user_id,
                 logout_options={"post_logout_redirect_uri": post_logout_redirect_uri}
             )
-            session.clear()
             logger.info(f"Logging out user {user_id}, redirecting to: {logout_url}")
             return redirect(logout_url)
         except Exception as e:
@@ -260,6 +272,11 @@ async def app_logout():
             return jsonify({"error": f"Logout failed: {str(e)}"}), 500
     logger.info("No user_id found, redirecting to index")
     return redirect("http://localhost:5000")
+
+@app.route("/app_clear_session")
+def app_clear_session():
+    session.clear()
+    return jsonify({"success": True, "message": "Session cleared successfully"})
 
 @app.route("/app_refresh_token")
 def app_refresh_token():

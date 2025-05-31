@@ -21,6 +21,7 @@
         <div id="tokens-content"></div>
         <div class="token-actions">
             <button class="refresh-btn" onclick="refreshToken()">Refresh Token</button>
+            <button class="refresh-btn" onclick="clearSession()">Clear Session</button>
         </div>
     </div>
 
@@ -357,6 +358,17 @@
             } catch (error) {
                 console.error('Error refreshing token:', error);
                 showCopyFeedback('Failed to refresh token');
+            }
+        }
+
+        async function clearSession() {
+            try {
+                const response = await fetch('/app_clear_session');
+                if (response.ok) {
+                    window.location.reload();
+                }
+            } catch (error) {
+                console.error('Error clearing session:', error);
             }
         }
 
